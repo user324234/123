@@ -10,7 +10,8 @@ flask (for server)
 Download model from https://koto.reisen/model.cntk and put in danbooru-resnet_custom_v2-p4/ or run get_model.sh for unix systems  
 ## For sidecar tagger
 > python tagger.py evaluate "danbooru-resnet_custom_v1-p4" "some image.jpg"  
-> python tagger.py evaluate-batch "danbooru-resnet_custom_v1-p4" "some folder"
+> python tagger.py evaluate-batch "danbooru-resnet_custom_v1-p4" "some folder"  
+
 or see --help option.
 ## For server
 > python server.py
