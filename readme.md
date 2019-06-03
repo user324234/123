@@ -4,7 +4,7 @@ scikit-image
 numpy  
 cntk-gpu  
 click  
-flask
+flask (for server)
 
 # Usage
 Download model from https://koto.reisen/model.cntk and put in danbooru-resnet_custom_v2-p4/ or run get_model.sh for unix systems  
