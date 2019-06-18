@@ -97,7 +97,7 @@ def evaluate_api(project_path, threshold, service, api_key, hash, api_url, input
     model, tags = core.load_model_and_tags(project_path)
     if input:
         with open(input, 'r') as f:
-            hashes = [line.strip() for line in f]
+            hash = [line.strip() for line in f]
     for hash in hash:
         cl = hydrus.Client(api_key)
         print(f'tagging {hash}')
