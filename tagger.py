@@ -6,12 +6,19 @@ import cntk
 import os
 import re
 from io import BytesIO
+try:
+    import hydrus
+except ImportError:
+    hydrus_api = False
+else:
+    hydrus_api = True
 
 # Uncomment if you want to use CPU forcely
 # cntk.try_set_default_device(cntk.device.cpu())
 
+DEFAULT_API_KEY = ""
 
-@click.version_option(prog_name='DeepDanbooru-EvalOnly', version='1.0.0')
+@click.version_option(prog_name='hydrus-dd', version='1.1.0')
 @click.group()
 def main():
     pass
@@ -78,28 +85,68 @@ def evaluate_sidecar_batch(project_path, folder_path, threshold):
     file.close()
 
 
-@main.command('evaluate-api')
+@main.command('evaluate-api-hash')
 @click.argument('project_path', type=click.Path(exists=True, resolve_path=True, file_okay=False, dir_okay=True))
 @click.option('--hash', '-h', multiple=True)
 @click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
-@click.option('--api_key', default="")
+@click.option('--api_key', default=DEFAULT_API_KEY)
 @click.option('--service', default="local tags", show_default=True)
 @click.option('--input', '-i', nargs=1, type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False), help="Input file with hashes to lookup, 1 hash per line.")
-@click.option('--api_url', default="http://127.0.0.1:45869/", show_default=True)
-def evaluate_api(project_path, threshold, service, api_key, hash, api_url, input):
-    try:
-        import hydrus
-    except ImportError:
+@click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
+def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, input):
+    if hydrus_api == False:
         print("Hydrus API not found.\nPlease install Hydrus API Python module.\nhttps://gitlab.com/cryzed/hydrus-api")
         exit()
-    REQUIRED_PERMISSIONS = [hydrus.Permission.AddTags]
-
     model, tags = core.load_model_and_tags(project_path)
     if input:
         with open(input, 'r') as f:
             hash = [line.strip() for line in f]
     for hash in hash:
         cl = hydrus.Client(api_key)
+        print(f'tagging {hash}')
+        image_path = BytesIO(cl.get_file(hash_=hash))
+
+        image = core.load_image_as_hwc(
+            image_path, (299, 299))  # resize to 299x299x3
+        image = np.ascontiguousarray(np.transpose(
+            image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+
+        results = model.eval(image).reshape(
+            tags.shape[0])  # array of tag score
+        alltags = []
+        regex = re.compile('score:\w+')
+
+        for i in range(len(tags)):
+            if results[i] > threshold:
+                alltags.append(tags[i])
+
+        filtered = [x for x in alltags if not regex.match(x)]
+        hash = [hash]
+        cl.add_tags(hash, {service: filtered})
+
+
+@main.command('evaluate-api-search')
+@click.argument('project_path', type=click.Path(exists=True, resolve_path=True, file_okay=False, dir_okay=True))
+@click.argument('search_tags', nargs=-1)
+@click.option('--archive', default=False, is_flag=True)
+@click.option('--inbox', default=False, is_flag=True)
+@click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
+@click.option('--api_key', default=DEFAULT_API_KEY)
+@click.option('--service', default="local tags", show_default=True)
+@click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
+def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags):
+    if hydrus_api == False:
+        print("Hydrus API not found.\nPlease install Hydrus API Python module.\nhttps://gitlab.com/cryzed/hydrus-api")
+        exit()
+    model, tags = core.load_model_and_tags(project_path)
+    cl = hydrus.Client(api_key)
+    clean_tags = cl.clean_tags(search_tags)
+    fileIDs = cl.search_files(clean_tags, inbox, archive)
+    metadata = cl.file_metadata(file_ids=fileIDs, only_identifiers=True)
+    hashes = []
+    for n, metadata in enumerate(metadata):
+        hashes.append(metadata['hash'])
+    for hash in hashes:
         print(f'tagging {hash}')
         image_path = BytesIO(cl.get_file(hash_=hash))
 
