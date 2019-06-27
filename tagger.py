@@ -8,10 +8,10 @@ import re
 from io import BytesIO
 try:
     import hydrus
+    hydrus_api = True
 except ImportError:
     hydrus_api = False
-else:
-    hydrus_api = True
+    
 
 # Uncomment if you want to use CPU forcely
 # cntk.try_set_default_device(cntk.device.cpu())

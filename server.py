@@ -2,6 +2,7 @@ import tagger
 import os
 from flask import Flask, request, redirect, url_for, json, after_this_request
 from werkzeug.utils import secure_filename
+from io import BytesIO
 
 UPLOAD_FOLDER = 'temp'
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
@@ -31,9 +32,9 @@ def upload_file():
             return redirect(request.url)
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            deepdanbooru_response = json.dumps(tagger.evaluate_post(os.path.join(
-                app.config['UPLOAD_FOLDER'], filename), app.config['THRESHOLD'])),
+            tempfile = BytesIO()
+            file.save(tempfile)
+            deepdanbooru_response = json.dumps(tagger.evaluate_post(tempfile, app.config['THRESHOLD'])),
             response = app.response_class(
                 response=deepdanbooru_response,
                 status=200,
@@ -41,13 +42,6 @@ def upload_file():
             )
             print("tags for " + filename + ":")
             print(deepdanbooru_response)
-            try:
-                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                print("removed " +
-                      os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            except OSError as e:
-                print(e.strerror)
-                print(e.code)
             return response
     return '''
     <!doctype html>
