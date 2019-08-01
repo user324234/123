@@ -1,5 +1,6 @@
 # Original from https://www.reddit.com/r/MachineLearning/comments/akbc11/p_tag_estimation_for_animestyle_girl_image/
 # Dependencies
+python 3.6  
 scikit-image  
 numpy  
 cntk-gpu  
@@ -25,7 +26,7 @@ or see `--help` option.
 
 > python tagger.py evaluate-api-search "danbooru-resnet_custom_v1-p4" --api_key 466f2185417001876effabd9ab53f9447439958b0774bf50d262b109e598ee99 "1girl" "brown hair" "blue eyes"  
 
-or see `python tagger evaluate-api --help`  
+or see `python tagger.py evaluate-api --help`  
 
 You can add a default `api_key` into `tagger.py` by adding it to the DEFAULT_API_KEY variable.  
 ```DEFAULT_API_KEY = "466f2185417001876effabd9ab53f9447439958b0774bf50d262b109e598ee99"```  
