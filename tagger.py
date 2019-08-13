@@ -16,9 +16,10 @@ except ImportError:
 # Uncomment if you want to use CPU forcely
 # cntk.try_set_default_device(cntk.device.cpu())
 
+
 DEFAULT_API_KEY = ""
 
-@click.version_option(prog_name='hydrus-dd', version='1.1.0')
+@click.version_option(prog_name='hydrus-dd', version='1.1.1')
 @click.group()
 def main():
     pass
@@ -102,27 +103,30 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
         with open(input, 'r') as f:
             hash = [line.strip() for line in f]
     for hash in hash:
-        cl = hydrus.Client(api_key)
-        print(f'tagging {hash}')
-        image_path = BytesIO(cl.get_file(hash_=hash))
+        try:
+            cl = hydrus.Client(api_key)
+            print(f'tagging {hash}')
+            image_path = BytesIO(cl.get_file(hash_=hash))
 
-        image = core.load_image_as_hwc(
-            image_path, (299, 299))  # resize to 299x299x3
-        image = np.ascontiguousarray(np.transpose(
-            image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+            image = core.load_image_as_hwc(
+                image_path, (299, 299))  # resize to 299x299x3
+            image = np.ascontiguousarray(np.transpose(
+                image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
 
-        results = model.eval(image).reshape(
-            tags.shape[0])  # array of tag score
-        alltags = []
-        regex = re.compile('score:\w+')
+            results = model.eval(image).reshape(
+                tags.shape[0])  # array of tag score
+            alltags = []
+            regex = re.compile('score:\w+')
 
-        for i in range(len(tags)):
-            if results[i] > threshold:
-                alltags.append(tags[i])
+            for i in range(len(tags)):
+                if results[i] > threshold:
+                    alltags.append(tags[i])
 
-        filtered = [x for x in alltags if not regex.match(x)]
-        hash = [hash]
-        cl.add_tags(hash, {service: filtered})
+            filtered = [x for x in alltags if not regex.match(x)]
+            hash = [hash]
+            cl.add_tags(hash, {service: filtered})
+        except:
+            print(f'{hash} does not appear to be an image, skipping')
 
 
 @main.command('evaluate-api-search')
@@ -147,26 +151,29 @@ def evaluate_api_search(project_path, archive, inbox, threshold, api_key, servic
     for n, metadata in enumerate(metadata):
         hashes.append(metadata['hash'])
     for hash in hashes:
-        print(f'tagging {hash}')
-        image_path = BytesIO(cl.get_file(hash_=hash))
+        try:
+            print(f'tagging {hash}')
+            image_path = BytesIO(cl.get_file(hash_=hash))
 
-        image = core.load_image_as_hwc(
-            image_path, (299, 299))  # resize to 299x299x3
-        image = np.ascontiguousarray(np.transpose(
-            image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+            image = core.load_image_as_hwc(
+                image_path, (299, 299))  # resize to 299x299x3
+            image = np.ascontiguousarray(np.transpose(
+                image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
 
-        results = model.eval(image).reshape(
-            tags.shape[0])  # array of tag score
-        alltags = []
-        regex = re.compile('score:\w+')
+            results = model.eval(image).reshape(
+                tags.shape[0])  # array of tag score
+            alltags = []
+            regex = re.compile('score:\w+')
 
-        for i in range(len(tags)):
-            if results[i] > threshold:
-                alltags.append(tags[i])
+            for i in range(len(tags)):
+                if results[i] > threshold:
+                    alltags.append(tags[i])
 
-        filtered = [x for x in alltags if not regex.match(x)]
-        hash = [hash]
-        cl.add_tags(hash, {service: filtered})
+            filtered = [x for x in alltags if not regex.match(x)]
+            hash = [hash]
+            cl.add_tags(hash, {service: filtered})
+        except:
+            print(f'{hash} does not appear to be an image, skipping')
 
 
 def evaluate_post(image_path, threshold):
