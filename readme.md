@@ -6,7 +6,7 @@ numpy
 cntk-gpu  
 click  
 flask (for server)  
-[Hydrus API](https://gitlab.com/cryzed/hydrus-api)(for API intergration)
+hydrus-api (for API intergration)  
 
 # Usage
 Download model from https://koto.reisen/model.cntk and put in danbooru-resnet_custom_v2-p4/ or run get_model.sh for unix systems  
