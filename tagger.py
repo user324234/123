@@ -8,9 +8,9 @@ import re
 from io import BytesIO
 try:
     import hydrus
-    hydrus_api = True
+    import hydrus.utils
 except ImportError:
-    hydrus_api = False
+    hydrus_api = None
     
 
 # Uncomment if you want to use CPU forcely
@@ -19,7 +19,7 @@ except ImportError:
 
 DEFAULT_API_KEY = ""
 
-@click.version_option(prog_name='hydrus-dd', version='1.1.1')
+@click.version_option(prog_name='hydrus-dd', version='1.1.2')
 @click.group()
 def main():
     pass
@@ -95,7 +95,7 @@ def evaluate_sidecar_batch(project_path, folder_path, threshold):
 @click.option('--input', '-i', nargs=1, type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False), help="Input file with hashes to lookup, 1 hash per line.")
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, input):
-    if hydrus_api == False:
+    if hydrus_api is None:
         print("Hydrus API not found.\nPlease install Hydrus API Python module.\nhttps://gitlab.com/cryzed/hydrus-api")
         exit()
     model, tags = core.load_model_and_tags(project_path)
@@ -104,7 +104,7 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
             hash = [line.strip() for line in f]
     for hash in hash:
         try:
-            cl = hydrus.Client(api_key)
+            cl = hydrus.Client(api_key, api_url)
             print(f'tagging {hash}')
             image_path = BytesIO(cl.get_file(hash_=hash))
 
@@ -138,42 +138,44 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
 @click.option('--api_key', default=DEFAULT_API_KEY)
 @click.option('--service', default="local tags", show_default=True)
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
-def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags):
-    if hydrus_api == False:
+@click.option('--chunk_size', type=int, default=100, show_default=True)
+def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags, chunk_size):
+    if hydrus_api is None:
         print("Hydrus API not found.\nPlease install Hydrus API Python module.\nhttps://gitlab.com/cryzed/hydrus-api")
         exit()
     model, tags = core.load_model_and_tags(project_path)
-    cl = hydrus.Client(api_key)
+    cl = hydrus.Client(api_key, api_url)
     clean_tags = cl.clean_tags(search_tags)
     fileIDs = cl.search_files(clean_tags, inbox, archive)
-    metadata = cl.file_metadata(file_ids=fileIDs, only_identifiers=True)
-    hashes = []
-    for n, metadata in enumerate(metadata):
-        hashes.append(metadata['hash'])
-    for hash in hashes:
-        try:
-            print(f'tagging {hash}')
-            image_path = BytesIO(cl.get_file(hash_=hash))
+    for file_ids in hydrus.utils.yield_chunks(list(fileIDs), chunk_size):
+        metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+        hashes = []
+        for n, metadata in enumerate(metadata):
+            hashes.append(metadata['hash'])
+        for hash in hashes:
+            try:
+                print(f'tagging {hash}')
+                image_path = BytesIO(cl.get_file(hash_=hash))
 
-            image = core.load_image_as_hwc(
-                image_path, (299, 299))  # resize to 299x299x3
-            image = np.ascontiguousarray(np.transpose(
-                image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+                image = core.load_image_as_hwc(
+                    image_path, (299, 299))  # resize to 299x299x3
+                image = np.ascontiguousarray(np.transpose(
+                    image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
 
-            results = model.eval(image).reshape(
-                tags.shape[0])  # array of tag score
-            alltags = []
-            regex = re.compile('score:\w+')
+                results = model.eval(image).reshape(
+                    tags.shape[0])  # array of tag score
+                alltags = []
+                regex = re.compile('score:\w+')
 
-            for i in range(len(tags)):
-                if results[i] > threshold:
-                    alltags.append(tags[i])
+                for i in range(len(tags)):
+                    if results[i] > threshold:
+                        alltags.append(tags[i])
 
-            filtered = [x for x in alltags if not regex.match(x)]
-            hash = [hash]
-            cl.add_tags(hash, {service: filtered})
-        except:
-            print(f'{hash} does not appear to be an image, skipping')
+                filtered = [x for x in alltags if not regex.match(x)]
+                hash = [hash]
+                cl.add_tags(hash, {service: filtered})
+            except:
+                print(f'{hash} does not appear to be an image, skipping')
 
 
 def evaluate_post(image_path, threshold):
