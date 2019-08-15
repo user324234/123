@@ -1,3 +1,5 @@
+#!/usr/env/python
+
 import click
 import numpy as np
 import threading
@@ -11,8 +13,11 @@ try:
     import hydrus.utils
 except ImportError:
     hydrus_api = None
-    
-
+try:
+    from flask import Flask, request, redirect, url_for, json, after_this_request
+    from werkzeug.utils import secure_filename
+except ImportError:
+    has_flask = None
 # Uncomment if you want to use CPU forcely
 # cntk.try_set_default_device(cntk.device.cpu())
 
@@ -177,25 +182,89 @@ def evaluate_api_search(project_path, archive, inbox, threshold, api_key, servic
             except:
                 print(f'{hash} does not appear to be an image, skipping')
 
+@main.command('run-server')
+@click.argument('project_path', type=click.Path(exists=True, resolve_path=True, file_okay=False, dir_okay=True))
+@click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
+@click.option('--host', default="0.0.0.0", show_default=True)
+@click.option('--port', default="4443", show_default=True)
+def run_server(project_path, threshold, host, port):
 
-def evaluate_post(image_path, threshold):
-    model, tags = core.load_model_and_tags("danbooru-resnet_custom_v2-p4")
+    app = Flask("hydrus-dd lookup server")
+    ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
-    image = core.load_image_as_hwc(
-        image_path, (299, 299))  # resize to 299x299x3
-    image = np.ascontiguousarray(np.transpose(
-        image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+    def allowed_file(filename):
+        return '.' in filename and \
+               filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-    results = model.eval(image).reshape(tags.shape[0])  # array of tag score
-    alltags = []
-    regex = re.compile('score:\w+')
 
-    for i in range(len(tags)):
-        if results[i] > threshold:
-            alltags.append(tags[i])
+    @app.route('/', methods=['GET', 'POST'])
+    def upload_file():
+        if request.method == 'POST':
+            if 'file' not in request.files:
+                flash('No file part')
+                return redirect(request.url)
+            file = request.files['file']
+            if file.filename == '':
+                flash('No selected file')
+                return redirect(request.url)
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                #print(file.read())
+                image_path = BytesIO(file.read())
+                model, tags = core.load_model_and_tags(project_path)
 
-    filtered = [x for x in alltags if not regex.match(x)]
-    return filtered
+                image = core.load_image_as_hwc(
+                    image_path, (299, 299))  # resize to 299x299x3
+                image = np.ascontiguousarray(np.transpose(
+                    image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+
+                results = model.eval(image).reshape(tags.shape[0])  # array of tag score
+                alltags = []
+                regex = re.compile('score:\w+')
+
+                for i in range(len(tags)):
+                    if results[i] > threshold:
+                        alltags.append(tags[i])
+
+                filtered = [x for x in alltags if not regex.match(x)]
+                deepdanbooru_response = json.dumps(filtered),
+                response = app.response_class(
+                    response=deepdanbooru_response,
+                    status=200,
+                    mimetype='application/json'
+                )
+                print("tags for " + filename + ":")
+                print(filtered)
+                return response
+        return '''
+        <!doctype html>
+        <title>Upload new File</title>
+        <h1>Upload new File</h1>
+        <form method=post enctype=multipart/form-data>
+          <p><input type=file name=file>
+             <input type=submit value=Upload>
+        </form>
+        '''
+
+    app.run(host=host, port=port)
+
+# def evaluate_post(image_path, threshold):
+#     model, tags = core.load_model_and_tags("project_path")
+
+#     image = core.load_image_as_hwc(
+#         image_path, (299, 299))  # resize to 299x299x3
+#     image = np.ascontiguousarray(np.transpose(
+#         image, (2, 0, 1)), dtype=np.float32)  # transpose HWC to CHW (3x299x299)
+
+#     results = model.eval(image).reshape(tags.shape[0])  # array of tag score
+#     alltags = []
+#     regex = re.compile('score:\w+')
+
+#     for i in range(len(tags)):
+#         if results[i] > threshold:
+#             alltags.append(tags[i])
+
+#     filtered = [x for x in alltags if not regex.match(x)]
 
 if __name__ == '__main__':
     threading.stack_size(4 * 1024 * 1024)
