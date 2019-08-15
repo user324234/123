@@ -12,12 +12,12 @@ try:
     import hydrus
     import hydrus.utils
 except ImportError:
-    hydrus_api = None
+    Client = None
 try:
     from flask import Flask, request, redirect, url_for, json, after_this_request
     from werkzeug.utils import secure_filename
 except ImportError:
-    has_flask = None
+    Flask = None
 
 # Uncomment if you want to use CPU forcely
 # cntk.try_set_default_device(cntk.device.cpu())
@@ -101,9 +101,9 @@ def evaluate_sidecar_batch(project_path, folder_path, threshold):
 @click.option('--input', '-i', nargs=1, type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False), help="Input file with hashes to lookup, 1 hash per line.")
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, input):
-    if hydrus_api is None:
+    if Client is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
-        exit()
+        return
     model, tags = core.load_model_and_tags(project_path)
     if input:
         with open(input, 'r') as f:
@@ -146,9 +146,9 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 @click.option('--chunk_size', type=int, default=100, show_default=True)
 def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags, chunk_size):
-    if hydrus_api is None:
+    if Client is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
-        exit()
+        return()
     model, tags = core.load_model_and_tags(project_path)
     cl = hydrus.Client(api_key, api_url)
     clean_tags = cl.clean_tags(search_tags)
@@ -189,9 +189,9 @@ def evaluate_api_search(project_path, archive, inbox, threshold, api_key, servic
 @click.option('--host', default="0.0.0.0", show_default=True)
 @click.option('--port', default="4443", show_default=True)
 def run_server(project_path, threshold, host, port):
-    if has_flask is None:
+    if Flask is None:
         print("flask not found.\nPlease install flask python module.")
-        exit()
+        return()
 
     app = Flask("hydrus-dd lookup server")
     ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
