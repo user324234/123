@@ -10,9 +10,9 @@ import re
 from io import BytesIO
 try:
     import hydrus
-    import hydrus.utils
+    from hydrus.utils import yield_chunks
 except ImportError:
-    Client = None
+    hydrus = None
 try:
     from flask import Flask, request, redirect, url_for, json, after_this_request
     from werkzeug.utils import secure_filename
@@ -25,7 +25,7 @@ except ImportError:
 
 DEFAULT_API_KEY = ""
 
-@click.version_option(prog_name='hydrus-dd', version='1.1.2')
+@click.version_option(prog_name='hydrus-dd', version='1.2.0')
 @click.group()
 def main():
     pass
@@ -101,7 +101,7 @@ def evaluate_sidecar_batch(project_path, folder_path, threshold):
 @click.option('--input', '-i', nargs=1, type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False), help="Input file with hashes to lookup, 1 hash per line.")
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, input):
-    if Client is None:
+    if hydrus is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
         return
     model, tags = core.load_model_and_tags(project_path)
@@ -146,7 +146,7 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 @click.option('--chunk_size', type=int, default=100, show_default=True)
 def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags, chunk_size):
-    if Client is None:
+    if hydrus is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
         return()
     model, tags = core.load_model_and_tags(project_path)
