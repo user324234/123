@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import click
 import numpy as np
 import threading
@@ -97,7 +95,7 @@ def evaluate_sidecar_batch(project_path, folder_path, threshold):
 @click.option('--hash', '-h', multiple=True)
 @click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
 @click.option('--api_key', default=DEFAULT_API_KEY)
-@click.option('--service', default="local tags", show_default=True)
+@click.option('--service', default="my tags", show_default=True)
 @click.option('--input', '-i', nargs=1, type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False), help="Input file with hashes to lookup, 1 hash per line.")
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, input):
@@ -142,7 +140,7 @@ def evaluate_api_hash(project_path, threshold, service, api_key, hash, api_url, 
 @click.option('--inbox', default=False, is_flag=True)
 @click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
 @click.option('--api_key', default=DEFAULT_API_KEY)
-@click.option('--service', default="local tags", show_default=True)
+@click.option('--service', default="my tags", show_default=True)
 @click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
 @click.option('--chunk_size', type=int, default=100, show_default=True)
 def evaluate_api_search(project_path, archive, inbox, threshold, api_key, service, api_url, search_tags, chunk_size):
