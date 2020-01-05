@@ -1,3 +1,3 @@
 __pycache__/
 *.py[cod]
-danbooru-resnet_custom_v2-p4/model.cntk
+model/model.h5
