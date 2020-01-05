@@ -9,6 +9,7 @@ import click
 from hydrus.utils import yield_chunks
 
 from . import evaluate
+from . import config
 
 try:
     import tensorflow as tf
@@ -26,9 +27,9 @@ try:
 except ImportError:
     Flask = None  # type: ignore
 
-DEFAULT_API_KEY = ""
+cfg = config.load_config()
 TAG_FORMAT = '{tag}'
-__version__ = '2.1.0'
+__version__ = '2.2.0'
 
 
 def get_files_recursively(folder_path):
@@ -62,17 +63,17 @@ def main():
 
 @main.command('evaluate')
 @click.argument('image_path', type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False))
-@click.option('--threshold', default=0.5, help='Score threshold for result.')
-@click.option('--cpu', default=False, is_flag=True, help="Use CPU")
+@click.option('--threshold', type=float, default=cfg['general']['threshold'], help='Score threshold for result.')
+@click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
 @click.option(
-    '--model_path', default=evaluate.MODEL_PATH, show_default=True,
+    '--model_path', default=cfg['general']['model_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Model path.")
 @click.option(
-    '--tags_path', default=evaluate.TAGS_PATH, show_default=True,
+    '--tags_path', default=cfg['general']['tags_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Tags file path.")
-@click.option('--tag_format', default=TAG_FORMAT, show_default=True)
+@click.option('--tag_format', default=cfg['general']['tag_format'], show_default=True)
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
@@ -91,17 +92,17 @@ def evaluate_sidecar(image_path: click.Path, threshold: float, cpu: bool, model_
 
 @main.command('evaluate-batch')
 @click.argument('folder_path', type=click.Path(exists=True, resolve_path=True, file_okay=False, dir_okay=True))
-@click.option('--threshold', default=0.5, help='Score threshold for result.')
-@click.option('--cpu', default=False, is_flag=True, help="Use CPU")
+@click.option('--threshold', type=float, default=cfg['general']['threshold'], help='Score threshold for result.')
+@click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
 @click.option(
-    '--model_path', default=evaluate.MODEL_PATH, show_default=True,
+    '--model_path', default=cfg['general']['model_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Model path.")
 @click.option(
-    '--tags_path', default=evaluate.TAGS_PATH, show_default=True,
+    '--tags_path', default=cfg['general']['tags_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Tags file path.")
-@click.option('--tag_format', default=TAG_FORMAT, show_default=True)
+@click.option('--tag_format', default=cfg['general']['tag_format'], show_default=True)
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
@@ -127,24 +128,24 @@ def evaluate_sidecar_batch(folder_path: click.Path, threshold: float, cpu: bool,
 
 @main.command('evaluate-api-hash')
 @click.option('--hash', '-h', 'hash_', multiple=True)
-@click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
-@click.option('--api_key', default=DEFAULT_API_KEY)
-@click.option('--service', default="my tags", show_default=True)
+@click.option('--threshold', type=float, default=cfg['general']['threshold'], help='Score threshold for result.', show_default=True)
+@click.option('--api_key', default=cfg['general']['api_key'])
+@click.option('--service', default=cfg['general']['service'], show_default=True)
 @click.option(
     '--input', '-i', 'input_', nargs=1,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Input file with hashes to lookup, 1 hash per line.")
-@click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
-@click.option('--cpu', default=False, is_flag=True, help="Use CPU")
+@click.option('--api_url', default=cfg['general']['api_url'], show_default=True)
+@click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
 @click.option(
-    '--model_path', default=evaluate.MODEL_PATH, show_default=True,
+    '--model_path', default=cfg['general']['model_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Model path.")
 @click.option(
-    '--tags_path', default=evaluate.TAGS_PATH, show_default=True,
+    '--tags_path', default=cfg['general']['tags_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Tags file path.")
-@click.option('--tag_format', default=TAG_FORMAT, show_default=True)
+@click.option('--tag_format', default=cfg['general']['tag_format'], show_default=True)
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
@@ -187,23 +188,23 @@ def evaluate_api_hash(
 
 @main.command('evaluate-api-search')
 @click.argument('search_tags', nargs=-1)
-@click.option('--archive', default=False, is_flag=True)
-@click.option('--inbox', default=False, is_flag=True)
-@click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
-@click.option('--api_key', default=DEFAULT_API_KEY)
-@click.option('--service', default="my tags", show_default=True)
-@click.option('--api_url', default=hydrus.DEFAULT_API_URL, show_default=True)
-@click.option('--chunk_size', type=int, default=100, show_default=True)
-@click.option('--cpu', default=False, is_flag=True, help="Use CPU")
+@click.option('--archive', default=cfg['general']['archive'], is_flag=True)
+@click.option('--inbox', default=cfg['general']['inbox'], is_flag=True)
+@click.option('--threshold',  type=float, default=cfg['general']['threshold'], help='Score threshold for result.', show_default=True)
+@click.option('--api_key', default=cfg['general']['api_key'])
+@click.option('--service', default=cfg['general']['service'], show_default=True)
+@click.option('--api_url', default=cfg['general']['api_url'], show_default=True)
+@click.option('--chunk_size', type=int, default=cfg['general']['chunk_size'], show_default=True)
+@click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
 @click.option(
-    '--model_path', default=evaluate.MODEL_PATH, show_default=True,
+    '--model_path', default=cfg['general']['model_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Model path.")
 @click.option(
-    '--tags_path', default=evaluate.TAGS_PATH, show_default=True,
+    '--tags_path', default=cfg['general']['tags_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Tags file path.")
-@click.option('--tag_format', default=TAG_FORMAT, show_default=True)
+@click.option('--tag_format', default=cfg['general']['tag_format'], show_default=True)
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
@@ -252,19 +253,19 @@ def evaluate_api_search(
 
 
 @main.command('run-server')
-@click.option('--threshold', default=0.5, help='Score threshold for result.', show_default=True)
-@click.option('--host', default="0.0.0.0", show_default=True)
-@click.option('--port', default="4443", show_default=True)
-@click.option('--cpu', default=False, is_flag=True, help="Use CPU")
+@click.option('--threshold', type=float, default=cfg['general']['threshold'], help='Score threshold for result.', show_default=True)
+@click.option('--host', default=cfg['server']['host'], show_default=True)
+@click.option('--port', default=cfg['server']['port'], show_default=True)
+@click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
 @click.option(
-    '--model_path', default=evaluate.MODEL_PATH, show_default=True,
+    '--model_path', default=cfg['general']['model_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Model path.")
 @click.option(
-    '--tags_path', default=evaluate.TAGS_PATH, show_default=True,
+    '--tags_path', default=cfg['general']['tags_path'], show_default=True,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
     help="Tags file path.")
-@click.option('--tag_format', default=TAG_FORMAT, show_default=True)
+@click.option('--tag_format', default=cfg['general']['tag_format'], show_default=True)
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
@@ -272,6 +273,7 @@ def run_server(threshold: float, host: str, port: int, cpu: bool, model_path: cl
     if Flask is None:
         print("flask not found.\nPlease install flask python module.")
         return()
+    config.load_config()
     if cpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 

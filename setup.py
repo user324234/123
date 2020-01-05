@@ -36,6 +36,7 @@ setuptools.setup(
         'scikit-image',
         'numpy',
         'six',
+        'appdirs',
         'deepdanbooru @ https://github.com/KichangKim/DeepDanbooru/tarball/master',
     ],
     extras_require={
