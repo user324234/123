@@ -37,6 +37,7 @@ setuptools.setup(
         'numpy',
         'six',
         'appdirs',
+        'tqdm',
         'deepdanbooru @ https://github.com/KichangKim/DeepDanbooru/tarball/master',
     ],
     extras_require={

@@ -1,5 +1,5 @@
-import configparser, os
-from appdirs import *
+import configparser, os  # NOQA
+from appdirs import *  # NOQA
 
 appname = "hydrus-dd"
 parser = configparser.ConfigParser()
@@ -22,13 +22,14 @@ host = 0.0.0.0
 port = 4443
 """
 
+
 def load_config():
     try:
         # Load default config
         parser.read_string(default_config)
         # Load user config from file to overwrite defaults
-        parser.read_file(open(os.path.join(user_config_dir(appname), "hydrus-dd.conf")))
+        parser.read_file(open(os.path.join(user_config_dir(appname), "hydrus-dd.conf")))  # NOQA
         return parser
-    except:
+    except:  # NOQA
         parser.read_string(default_config)
         return parser
