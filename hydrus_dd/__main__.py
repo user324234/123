@@ -1,15 +1,18 @@
 from __future__ import absolute_import
 
 import os
+import threading
+import traceback
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional
+from queue import Queue
+from typing import Any, List, Optional, Tuple
 
 import click
 from hydrus.utils import yield_chunks
+from tqdm import tqdm
 
-from . import evaluate
-from . import config
+from . import config, evaluate
 
 try:
     import tensorflow as tf
@@ -45,6 +48,7 @@ def get_files_recursively(folder_path):
 
     return image_path_list
 
+
 def load_model_and_tags(model_path, tags_path, compile_):
     print("loading model...")
     if compile_ is None:
@@ -54,6 +58,7 @@ def load_model_and_tags(model_path, tags_path, compile_):
     print("loading tags...")
     tags = evaluate.load_tags(tags_path)
     return model, tags
+
 
 @click.version_option(prog_name='hydrus-dd', version=__version__)
 @click.group()
@@ -84,9 +89,9 @@ def evaluate_sidecar(image_path: click.Path, threshold: float, cpu: bool, model_
     model, tags = load_model_and_tags(model_path, tags_path, compile_)
     results = evaluate.eval(image_path, threshold, model=model, tags=tags)
 
-    file = open(image_path + ".txt", "a")
+    file = open(image_path + ".txt", "a")  # type: ignore
     for tag in results:
-        file.write(tag + "\n")
+        file.write(tag + "\n")  # type: ignore
     file.close()
 
 
@@ -122,7 +127,7 @@ def evaluate_sidecar_batch(folder_path: click.Path, threshold: float, cpu: bool,
 
             file = open(image_path + ".txt", "a")
             for tag in results:
-                file.write(tag + "\n")
+                file.write(tag + "\n")  # type: ignore
             file.close()
 
 
@@ -186,6 +191,105 @@ def evaluate_api_hash(
                 print(f'tagging {hash_item} failed, skipping')
 
 
+class Producer(threading.Thread):
+
+    def __init__(
+            self,
+            queue: "Queue[Tuple[str, BytesIO]]",
+            hashes: List[str],
+            client: Any
+    ):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.hashes = hashes
+        self.client = client
+        self.finished = threading.Event()
+
+    def run(self):
+        cl = self.client
+        for hash_ in self.hashes:
+            tqdm.write(f"getting content {hash_}")
+            image = BytesIO(cl.get_file(hash_=hash_))
+            self.queue.put([hash_, image])
+        self.finished.set()
+
+
+class ContentConsumer(threading.Thread):
+
+    def __init__(
+            self,
+            queue: "Queue[Tuple[str, BytesIO]]",
+            model: Any,
+            tags: List[str],
+            threshold: float,
+            hash_tags_queue: "Queue[Tuple[str, List[Tuple[str, float]]]]",
+            producer_finished: threading.Event
+    ):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.model = model
+        self.tags = tags
+        self.threshold = threshold
+        self.hash_tags_queue = hash_tags_queue
+        self.producer_finished = producer_finished
+        self.finished = threading.Event()
+
+    def run(self):
+        while not self.producer_finished.is_set() or not self.queue.empty():
+            hash_, content = self.queue.get()
+            tqdm.write(f'estimating tags for {hash_}')
+            try:
+                results = evaluate.eval(
+                    content, self.threshold, return_score=True, model=self.model, tags=self.tags)
+            except Exception as err:
+                if err.__class__ == tf.errors.InvalidArgumentError:
+                    err_txt = traceback.format_exc().splitlines()[-1]
+                else:
+                    err_txt = traceback.format_exc()
+                tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
+                results = []
+            self.hash_tags_queue.put([hash_, results])
+            self.queue.task_done()
+        self.finished.set()
+
+
+class Consumer(threading.Thread):
+
+    def __init__(
+            self,
+            queue: "Queue[Tuple[str, List[Tuple[str, float]]]]",
+            client: Any,
+            tag_format: str,
+            service: str,
+            pbar: Any,
+            content_consumer_finished: threading.Event
+    ):
+        threading.Thread.__init__(self)
+        self.queue = queue
+        self.client = client
+        self.tag_format = tag_format
+        self.service = service
+        self.pbar = pbar
+        self.content_consumer_finished = content_consumer_finished
+
+    def run(self):
+        cl = self.client
+        tag_format = self.tag_format
+        service = self.service
+        while not self.content_consumer_finished.is_set() or not self.queue.empty():
+            hash_, results = self.queue.get()
+            tqdm.write(f'tagging {hash_}')
+            hash_arg = [hash_]
+            service_tags = list(map(
+                lambda x: tag_format.format(
+                    tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
+                results))
+            if service_tags:
+                cl.add_tags(hash_arg, {service: service_tags})
+            self.queue.task_done()
+            self.pbar.update()
+
+
 @main.command('evaluate-api-search')
 @click.argument('search_tags', nargs=-1)
 @click.option('--archive', default=cfg['general']['archive'], is_flag=True)
@@ -208,10 +312,15 @@ def evaluate_api_hash(
 @click.option(
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
+@click.option(
+    '--parallel/--no-parallel', 'parallel', default=True,
+    help='Run parallel or not.')
 def evaluate_api_search(
         archive: bool, inbox: bool, threshold: float, api_key: str, service: str, api_url: str,
         search_tags: str, chunk_size: int, cpu: bool,
-        model_path: click.Path, tags_path: click.Path, tag_format: str, compile_: Optional[bool]):
+        model_path: click.Path, tags_path: click.Path, tag_format: str, compile_: Optional[bool],
+        parallel: bool = True
+):
     if hydrus is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
         return()
@@ -220,36 +329,52 @@ def evaluate_api_search(
     cl = hydrus.Client(api_key, api_url)
     clean_tags = cl.clean_tags(search_tags)
     fileIDs = list(cl.search_files(clean_tags, inbox, archive))
-    idx = 0
     model, tags = load_model_and_tags(model_path, tags_path, compile_)
-    with click.progressbar(length=len(fileIDs)) as file_id_progress_bar:
-        for file_ids in yield_chunks(fileIDs, chunk_size):
-            metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
-            hashes = []
-            for n, metadata in enumerate(metadata):
-                hashes.append(metadata['hash'])
-            for hash_ in hashes:
-                file_id_progress_bar.update(idx/len(fileIDs)*2)  # type: ignore
-                idx += 1
-                try:
-                    print(f'tagging {hash_}')
-                    image_path = BytesIO(cl.get_file(hash_=hash_))
-                    hash_arg = [hash_]
-                    if tag_format == TAG_FORMAT:
-                        results = evaluate.eval(image_path, threshold, model=model, tags=tags)
-                        cl.add_tags(hash_arg, {service: results})
-                    else:
-                        results = evaluate.eval(
-                            image_path, threshold, return_score=True, model=model, tags=tags)
-                        if results:
-                            service_tags = list(map(
-                                lambda x: tag_format.format(
-                                    tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
-                                results))
-                            cl.add_tags(hash_arg, {service: service_tags})
-                except Exception as e:
-                    print(e)
-                    print(f'{hash_} does not appear to be an image, skipping')
+    hashes = []
+    for file_ids in yield_chunks(fileIDs, chunk_size):
+        metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+        for n, metadata in enumerate(metadata):
+            hashes.append(metadata['hash'])
+    if not hashes:
+        print('File not found.')
+        return
+    if parallel:
+        hash_content_queue = Queue(100)  # type: Queue[Tuple[str, Any]]
+        hash_tags_queue = Queue()  # type: Queue[Tuple[str, List[Tuple[str, float]]]]
+        with tqdm(total=len(hashes)) as pbar:
+            try:
+                producer = Producer(hash_content_queue, sorted(hashes), cl)
+                content_consumer = ContentConsumer(
+                    hash_content_queue, model, tags, threshold, hash_tags_queue, producer.finished)
+                consumer = Consumer(hash_tags_queue, cl, tag_format, service, pbar, content_consumer.finished)
+                producer.start()
+                content_consumer.start()
+                consumer.start()
+                producer.join()
+                content_consumer.join()
+                consumer.join()
+            except KeyboardInterrupt:
+                pass
+    else:
+        for hash_ in tqdm(hashes):
+            try:
+                print(f'tagging {hash_}')
+                image_path = BytesIO(cl.get_file(hash_=hash_))
+                hash_arg = [hash_]
+                if tag_format == TAG_FORMAT:
+                    service_tags = evaluate.eval(image_path, threshold, model=model, tags=tags)
+                else:
+                    results = evaluate.eval(
+                        image_path, threshold, return_score=True, model=model, tags=tags)
+                    service_tags = list(map(
+                        lambda x: tag_format.format(
+                            tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
+                        results))
+                if service_tags:
+                    cl.add_tags(hash_arg, {service: service_tags})
+            except Exception as e:
+                print(e)
+                print(f'{hash_} does not appear to be an image, skipping')
 
 
 @main.command('run-server')

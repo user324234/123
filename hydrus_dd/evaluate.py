@@ -9,10 +9,12 @@ except ImportError:
     print('Tensorflow Import failed')
     tf = None
 
+
 def load_tags(tags_path: Union[pathlib.Path, str, click.types.Path]):
     with open(tags_path, 'r') as stream:  # type: ignore
         tags = [tag for tag in (tag.strip() for tag in stream) if tag]
     return tags
+
 
 def eval(
         image_path: Union[six.BytesIO, str, click.types.Path],
