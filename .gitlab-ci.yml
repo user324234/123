@@ -19,11 +19,9 @@ cache:
 
 before_script:
   - python -V  # Print out python version for debugging
-  - pip install virtualenv
-  - virtualenv venv
-  - source venv/bin/activate
 
 test:
+  image: python:3.6
   script:
     - pip install .[tests,server]
     - tox

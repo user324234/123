@@ -193,14 +193,9 @@ def evaluate_api_hash(
 
 class Producer(threading.Thread):
 
-    def __init__(
-            self,
-            queue: "Queue[Tuple[str, BytesIO]]",
-            hashes: List[str],
-            client: Any
-    ):
+    def __init__(self, hashes: List[str], client: Any):
         threading.Thread.__init__(self)
-        self.queue = queue
+        self.queue = Queue(100)  # type: Queue[Tuple[str, Any]]
         self.hashes = hashes
         self.client = client
         self.finished = threading.Event()
@@ -218,25 +213,24 @@ class ContentConsumer(threading.Thread):
 
     def __init__(
             self,
-            queue: "Queue[Tuple[str, BytesIO]]",
+            hash_content_queue: "Queue[Tuple[str, BytesIO]]",
             model: Any,
             tags: List[str],
             threshold: float,
-            hash_tags_queue: "Queue[Tuple[str, List[Tuple[str, float]]]]",
             producer_finished: threading.Event
     ):
         threading.Thread.__init__(self)
-        self.queue = queue
+        self.hash_content_queue = hash_content_queue
         self.model = model
         self.tags = tags
         self.threshold = threshold
-        self.hash_tags_queue = hash_tags_queue
+        self.queue = Queue()  # type: Queue[Tuple[str, List[Tuple[str, float]]]]
         self.producer_finished = producer_finished
         self.finished = threading.Event()
 
     def run(self):
-        while not self.producer_finished.is_set() or not self.queue.empty():
-            hash_, content = self.queue.get()
+        while not self.producer_finished.is_set() or not self.hash_content_queue.empty():
+            hash_, content = self.hash_content_queue.get()
             tqdm.write(f'estimating tags for {hash_}')
             try:
                 results = evaluate.eval(
@@ -248,8 +242,8 @@ class ContentConsumer(threading.Thread):
                     err_txt = traceback.format_exc()
                 tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
                 results = []
-            self.hash_tags_queue.put([hash_, results])
-            self.queue.task_done()
+            self.queue.put([hash_, results])
+            self.hash_content_queue.task_done()
         self.finished.set()
 
 
@@ -277,17 +271,71 @@ class Consumer(threading.Thread):
         tag_format = self.tag_format
         service = self.service
         while not self.content_consumer_finished.is_set() or not self.queue.empty():
-            hash_, results = self.queue.get()
-            tqdm.write(f'tagging {hash_}')
-            hash_arg = [hash_]
-            service_tags = list(map(
-                lambda x: tag_format.format(
-                    tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
-                results))
-            if service_tags:
-                cl.add_tags(hash_arg, {service: service_tags})
+            try:
+                hash_, results = self.queue.get()
+                tqdm.write(f'tagging {hash_}')
+                hash_arg = [hash_]
+                service_tags = list(map(
+                    lambda x: tag_format.format(
+                        tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
+                    results))
+                if service_tags:
+                    cl.add_tags(hash_arg, {service: service_tags})
+            except Exception:
+                err_txt = traceback.format_exc()
+                tqdm.write(f'Error when tagging {hash_}\n{err_txt}')
             self.queue.task_done()
             self.pbar.update()
+
+
+class ModelLoader(threading.Thread):
+
+    def __init__(self, model_path: click.types.Path, compile_: Optional[bool]):
+        threading.Thread.__init__(self)
+        self.model_path = model_path
+        self.compile = compile_
+        self.model = None  # type: Optional[Any]
+
+    def run(self):
+        print("loading model...")
+        compile_ = self.compile
+        model_path = self.model_path
+        if compile_ is None:
+            model = tf.keras.models.load_model(model_path)
+        else:
+            model = tf.keras.models.load_model(model_path, compile=compile_)
+        self.model = model
+
+
+class HashLoader(threading.Thread):
+
+    def __init__(
+            self,
+            api_key: str,
+            api_url: str,
+            search_tags: List[str],
+            inbox: bool,
+            archive: bool,
+            chunk_size: int
+    ):
+        threading.Thread.__init__(self)
+        self.client = None
+        self.api_key = api_key
+        self.api_url = api_url
+        self.search_tags = search_tags
+        self.inbox = inbox
+        self.archive = archive
+        self.chunk_size = chunk_size
+        self.hashes = []  # type: List[str]
+
+    def run(self):
+        cl = hydrus.Client(self.api_key, self.api_url)
+        self.client = cl
+        clean_tags = cl.clean_tags(self.search_tags)
+        fileIDs = list(cl.search_files(clean_tags, self.inbox, self.archive))
+        for file_ids in yield_chunks(fileIDs, self.chunk_size):
+            metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+            self.hashes.extend(list(map(lambda x: x['hash'], metadata)))
 
 
 @main.command('evaluate-api-search')
@@ -317,7 +365,7 @@ class Consumer(threading.Thread):
     help='Run parallel or not.')
 def evaluate_api_search(
         archive: bool, inbox: bool, threshold: float, api_key: str, service: str, api_url: str,
-        search_tags: str, chunk_size: int, cpu: bool,
+        search_tags: List[str], chunk_size: int, cpu: bool,
         model_path: click.Path, tags_path: click.Path, tag_format: str, compile_: Optional[bool],
         parallel: bool = True
 ):
@@ -326,28 +374,32 @@ def evaluate_api_search(
         return()
     if cpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-    cl = hydrus.Client(api_key, api_url)
-    clean_tags = cl.clean_tags(search_tags)
-    fileIDs = list(cl.search_files(clean_tags, inbox, archive))
-    model, tags = load_model_and_tags(model_path, tags_path, compile_)
-    hashes = []
-    for file_ids in yield_chunks(fileIDs, chunk_size):
-        metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
-        for n, metadata in enumerate(metadata):
-            hashes.append(metadata['hash'])
-    if not hashes:
-        print('File not found.')
-        return
     if parallel:
-        hash_content_queue = Queue(100)  # type: Queue[Tuple[str, Any]]
-        hash_tags_queue = Queue()  # type: Queue[Tuple[str, List[Tuple[str, float]]]]
+        hash_loader = HashLoader(api_key, api_url, search_tags, inbox, archive, chunk_size)
+        model_loader = ModelLoader(model_path, compile_)
+        hash_loader.start()
+        model_loader.start()
+        hash_loader.join()
+        hashes = hash_loader.hashes
+        cl = hash_loader.client
+        if not hashes:
+            print('File not found.')
+            return
         with tqdm(total=len(hashes)) as pbar:
             try:
-                producer = Producer(hash_content_queue, sorted(hashes), cl)
-                content_consumer = ContentConsumer(
-                    hash_content_queue, model, tags, threshold, hash_tags_queue, producer.finished)
-                consumer = Consumer(hash_tags_queue, cl, tag_format, service, pbar, content_consumer.finished)
+                producer = Producer(sorted(hashes), cl)
                 producer.start()
+                model_loader.join()
+                model = model_loader.model
+                tags = evaluate.load_tags(tags_path)
+                if not all([model, tags]):
+                    return
+                content_consumer = ContentConsumer(
+                    producer.queue, model, tags, threshold, producer.finished)
+                consumer = Consumer(
+                    content_consumer.queue,
+                    cl, tag_format, service, pbar,
+                    content_consumer.finished)
                 content_consumer.start()
                 consumer.start()
                 producer.join()
@@ -356,6 +408,18 @@ def evaluate_api_search(
             except KeyboardInterrupt:
                 pass
     else:
+        cl = hydrus.Client(api_key, api_url)
+        clean_tags = cl.clean_tags(search_tags)
+        fileIDs = list(cl.search_files(clean_tags, inbox, archive))
+        model, tags = load_model_and_tags(model_path, tags_path, compile_)
+        hashes = []
+        for file_ids in yield_chunks(fileIDs, chunk_size):
+            metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+            for n, metadata in enumerate(metadata):
+                hashes.append(metadata['hash'])
+        if not hashes:
+            print('File not found.')
+            return
         for hash_ in tqdm(hashes):
             try:
                 print(f'tagging {hash_}')
