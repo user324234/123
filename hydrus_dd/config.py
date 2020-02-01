@@ -1,14 +1,13 @@
 import configparser, os
 from appdirs import *
 
-appname = "hydrus-dd"
 parser = configparser.ConfigParser()
 
 default_config = """
 [general]
 api_url = http://127.0.0.1:45869
-model_path = model/model.h5
-tags_path = model/tags.txt
+model_path = """+os.path.join("model", "model.h5")+"""
+tags_path = """+os.path.join("model", "tags.txt")+"""
 tag_format = {tag}
 service = my tags
 api_key = None
@@ -27,7 +26,7 @@ def load_config():
         # Load default config
         parser.read_string(default_config)
         # Load user config from file to overwrite defaults
-        parser.read_file(open(os.path.join(user_config_dir(appname), "hydrus-dd.conf")))
+        parser.read_file(open(os.path.join(user_config_dir(), "hydrus-dd" ,"hydrus-dd.conf")))
         return parser
     except:
         parser.read_string(default_config)
