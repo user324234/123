@@ -172,7 +172,7 @@ def evaluate_api_hash(
             try:
                 cl = hydrus.Client(api_key, api_url)
                 print(f' tagging {hash_item}')
-                image_path = BytesIO(cl.get_file(hash_=hash_item))
+                image_path = BytesIO(cl.get_file(hash_=hash_item).content)
                 hash_arg = [hash_item]
                 if tag_format == TAG_FORMAT:
                     results = evaluate.eval(
@@ -204,7 +204,7 @@ class Producer(threading.Thread):
         cl = self.client
         for hash_ in self.hashes:
             tqdm.write(f"getting content {hash_}")
-            image = BytesIO(cl.get_file(hash_=hash_))
+            image = BytesIO(cl.get_file(hash_=hash_).content)
             self.queue.put([hash_, image])
         self.finished.set()
 
@@ -423,7 +423,7 @@ def evaluate_api_search(
         for hash_ in tqdm(hashes):
             try:
                 print(f'tagging {hash_}')
-                image_path = BytesIO(cl.get_file(hash_=hash_))
+                image_path = BytesIO(cl.get_file(hash_=hash_).content)
                 hash_arg = [hash_]
                 if tag_format == TAG_FORMAT:
                     service_tags = evaluate.eval(image_path, threshold, model=model, tags=tags)
