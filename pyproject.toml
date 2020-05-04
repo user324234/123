@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "hydrus-dd"
+version = "2.2.1"
+description = "DeepDanbooru neural network tagging for Hydrus"
+authors = ["koto <koto@koto.reisen>"]
+license = "MIT"
+readme = 'readme.md'
+repository = "https://gitgud.io/koto/hydrus-dd"
+homepage = "https://gitgud.io/koto/hydrus-dd"
+
+[tool.poetry.dependencies]
+python = "^3.6"
+click = "^7.0"
+scikit-image = "*"
+numpy = "^1.16.2"
+six = "^1.13"
+appdirs = "*"
+tqdm = "*"
+tensorflow = { version = "^2.1", allow-prereleases = true }
+deepdanbooru = { git = "https://github.com/KichangKim/DeepDanbooru.git", branch = "master" }
+# Optional
+flask = { version = "*", optional = true }
+hydrus-api = { version = "*", optional = true }
+
+[tool.poetry.scripts]
+hydrus-dd = 'hydrus_dd.__main__:main'

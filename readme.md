@@ -13,6 +13,7 @@ appdirs
 Download model from https://koto.reisen/model.h5 and put in model/ folder or run get_model.sh for unix systems.  
 You can download the v1 model from https://koto.reisen/model_v1.h5, be sure to use with tags_v1.txt.  
 Run `pip install . --user` or `python setup.py install --user` in folder.  
+For poetry installation run `poetry install` in folder.
 # Configuration
 See the [Configuration Page](https://gitgud.io/koto/hydrus-dd/-/wikis/Configuration)
 # Usage
