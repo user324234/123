@@ -43,4 +43,6 @@ or see `hydrus-dd evaluate-api-hash/evaluate-api-search --help`
 
 ## Troubleshooting  
 
+* If you are having problems connecting to the filelookup server on Windows on 0.0.0.0, connect to your local IP address instead, and change the IP to it in the filelookup script.  
+
 * Suppress tensorflow output by setting the `TF_CPP_MIN_LOG_LEVEL` environment variable  
