@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hydrus-dd"
-version = "2.2.1"
+version = "2.2.2"
 description = "DeepDanbooru neural network tagging for Hydrus"
 authors = ["koto <koto@koto.reisen>"]
 license = "MIT"
@@ -20,7 +20,7 @@ tensorflow = { version = "^2.1", allow-prereleases = true }
 deepdanbooru = { git = "https://github.com/KichangKim/DeepDanbooru.git", branch = "master" }
 # Optional
 flask = { version = "*", optional = true }
-hydrus-api = { version = "*", optional = true }
+hydrus-api = { version = "^2", optional = true }
 
 [tool.poetry.scripts]
 hydrus-dd = 'hydrus_dd.__main__:main'

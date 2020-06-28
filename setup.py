@@ -32,7 +32,7 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         'Click>=7.0',
-        'hydrus-api',
+        'hydrus-api>=2',
         'scikit-image',
         'numpy',
         'six',

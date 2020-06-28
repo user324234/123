@@ -32,7 +32,7 @@ except ImportError:
 
 cfg = config.load_config()
 TAG_FORMAT = '{tag}'
-__version__ = '2.2.1'
+__version__ = '2.2.2'
 
 
 def get_files_recursively(folder_path):
