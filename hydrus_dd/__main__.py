@@ -204,8 +204,11 @@ class Producer(threading.Thread):
         cl = self.client
         for hash_ in self.hashes:
             tqdm.write(f"getting content {hash_}")
-            image = BytesIO(cl.get_file(hash_=hash_).content)
-            self.queue.put([hash_, image])
+            try:
+                image = BytesIO(cl.get_file(hash_=hash_).content)
+                self.queue.put([hash_, image])
+            except Exception as err:
+                tqdm.write(f"Error when getting content for {hash_}: {err}")
         self.finished.set()
 
 
