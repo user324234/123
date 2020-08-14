@@ -27,7 +27,8 @@ def load_config():
         # Load default config
         parser.read_string(default_config)
         # Load user config from file to overwrite defaults
-        parser.read_file(open(os.path.join(user_config_dir(), "hydrus-dd" ,"hydrus-dd.conf")))
+        parser.read_file(open(os.path.join(
+            user_config_dir(), "hydrus-dd", "hydrus-dd.conf")))  # NOQA
         return parser
     except:  # NOQA
         parser.read_string(default_config)
