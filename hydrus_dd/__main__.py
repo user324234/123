@@ -386,7 +386,7 @@ def evaluate_api_search(
         hashes = hash_loader.hashes
         cl = hash_loader.client
         if not hashes:
-            print('File not found.')
+            print('No files found for this search.')
             return
         with tqdm(total=len(hashes)) as pbar:
             try:
@@ -421,7 +421,7 @@ def evaluate_api_search(
             for n, metadata in enumerate(metadata):
                 hashes.append(metadata['hash'])
         if not hashes:
-            print('File not found.')
+            print('No files found for this search')
             return
         for hash_ in tqdm(hashes):
             try:
