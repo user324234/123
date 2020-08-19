@@ -183,7 +183,7 @@ def evaluate_api_hash(
                         image_path, threshold, return_score=True,  model=model, tags=tags)
                     if results:
                         service_tags = list(map(lambda x: tag_format.format(
-                            tag=x[0], score=x[1], score10int=int(x[1]*11)  # type: ignore
+                            tag=x[0], score=x[1], score10int=int(x[1]*10)  # type: ignore
                         ), results))
                         cl.add_tags(hash_arg, {service: service_tags})
             except Exception as e:
@@ -204,8 +204,11 @@ class Producer(threading.Thread):
         cl = self.client
         for hash_ in self.hashes:
             tqdm.write(f"getting content {hash_}")
-            image = BytesIO(cl.get_file(hash_=hash_).content)
-            self.queue.put([hash_, image])
+            try:
+                image = BytesIO(cl.get_file(hash_=hash_).content)
+                self.queue.put([hash_, image])
+            except Exception as err:
+                tqdm.write(f"Error when getting content for {hash_}: {err}")
         self.finished.set()
 
 
@@ -277,7 +280,7 @@ class Consumer(threading.Thread):
                 hash_arg = [hash_]
                 service_tags = list(map(
                     lambda x: tag_format.format(
-                        tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
+                        tag=x[0], score=x[1], score10int=int(x[1]*10)),  # type: ignore
                     results))
                 if service_tags:
                     cl.add_tags(hash_arg, {service: service_tags})
@@ -432,7 +435,7 @@ def evaluate_api_search(
                         image_path, threshold, return_score=True, model=model, tags=tags)
                     service_tags = list(map(
                         lambda x: tag_format.format(
-                            tag=x[0], score=x[1], score10int=int(x[1]*11)),  # type: ignore
+                            tag=x[0], score=x[1], score10int=int(x[1]*10)),  # type: ignore
                         results))
                 if service_tags:
                     cl.add_tags(hash_arg, {service: service_tags})
