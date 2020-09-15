@@ -17,7 +17,7 @@ from . import config, evaluate
 try:
     import tensorflow as tf
 except ImportError:
-    print('Tensorflow Import failed')
+    print('Tensorflow import failed')
     tf = None
 
 try:
@@ -421,7 +421,7 @@ def evaluate_api_search(
             for n, metadata in enumerate(metadata):
                 hashes.append(metadata['hash'])
         if not hashes:
-            print('No files found for this search')
+            print('No files found for this search.')
             return
         for hash_ in tqdm(hashes):
             try:
