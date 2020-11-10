@@ -6,9 +6,11 @@ import traceback
 from io import BytesIO
 from pathlib import Path
 from queue import Queue
+from tempfile import NamedTemporaryFile
 from typing import Any, List, Optional, Tuple
 
 import click
+import sh
 from hydrus.utils import yield_chunks
 from tqdm import tqdm
 
@@ -25,7 +27,7 @@ try:
 except ImportError:
     hydrus = None
 try:
-    from flask import Flask, flash, request, redirect, json
+    from flask import Flask, flash, json, redirect, request
     from werkzeug.utils import secure_filename
 except ImportError:
     Flask = None  # type: ignore
@@ -212,7 +214,35 @@ class Producer(threading.Thread):
         self.finished.set()
 
 
+def convert_webp(content: BytesIO):
+    """Convert webp to png using **dwebp**."""
+    with NamedTemporaryFile(suffix='.webp') as ifile, NamedTemporaryFile(suffix='.png') as ofile:
+        ifile.write(content.read())
+        sh.dwebp(ifile.name, '-o', ofile.name)
+        return BytesIO(ofile.read())
+
+
 class ContentConsumer(threading.Thread):
+    """Predict tags from image content."""
+
+    queue: 'Queue[Tuple[str, List[Tuple[str, float]]]]'
+    "Main queue for this class."
+    producer_finished: threading.Event
+    "Flag from producer, which produce hash and image content tuple."
+    hash_content_queue: "Queue[Tuple[str, BytesIO]]"
+    ":py:class:`Queue` consist of :py:class:`tuple` of hash and image content."
+    model: Any
+    "Model for deepdanbooru."
+    tags: List[str]
+    "Tags for deepdanbooru."
+    threshold: float
+    """Tags threshold."""
+    finished: threading.Event
+    """Flag when the run is finished."""
+    dwebp: Optional[str]
+    """dwebp version if exist and needed.
+
+    if it not exist it will set to :code:`'0'` after first check."""
 
     def __init__(
             self,
@@ -227,24 +257,41 @@ class ContentConsumer(threading.Thread):
         self.model = model
         self.tags = tags
         self.threshold = threshold
-        self.queue = Queue()  # type: Queue[Tuple[str, List[Tuple[str, float]]]]
+        self.queue = Queue()
         self.producer_finished = producer_finished
         self.finished = threading.Event()
+        self.dwebp = None
 
     def run(self):
+        """Method representing the thread’s activity.
+
+        This will run until image producer is finished and all image in queue already processed.
+        """
         while not self.producer_finished.is_set() or not self.hash_content_queue.empty():
             hash_, content = self.hash_content_queue.get()
             tqdm.write(f'estimating tags for {hash_}')
+            results = []
             try:
                 results = evaluate.eval(
                     content, self.threshold, return_score=True, model=self.model, tags=self.tags)
             except Exception as err:
                 if err.__class__ == tf.errors.InvalidArgumentError:
                     err_txt = traceback.format_exc().splitlines()[-1]
+                    # only check dwebp once
+                    if not self.dwebp and sh:
+                        try:
+                            self.dwebp = str(sh.dwebp('-version'))
+                            tqdm.write(f"using dwebp version:{self.dwebp}")
+                        except Exception:
+                            self.dwebp = '0'
+                    substr = "got unknown format starting with 'RIFF\\316\\252\\005\\000WEBPVP8 '"
+                    if substr in err_txt and self.dwebp and self.dwebp != '0':
+                        results = evaluate.eval(
+                            convert_webp(content), self.threshold, return_score=True, model=self.model, tags=self.tags)
                 else:
                     err_txt = traceback.format_exc()
-                tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
-                results = []
+                if not results and err_txt:
+                    tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
             self.queue.put([hash_, results])
             self.hash_content_queue.task_done()
         self.finished.set()
