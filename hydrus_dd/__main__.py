@@ -286,8 +286,11 @@ class ContentConsumer(threading.Thread):
                             self.dwebp = '0'
                     substr = "got unknown format starting with 'RIFF"
                     if substr in err_txt and self.dwebp and self.dwebp != '0':
-                        results = evaluate.eval(
-                            convert_webp(content), self.threshold, return_score=True, model=self.model, tags=self.tags)
+                        try:
+                            results = evaluate.eval(
+                                convert_webp(content), self.threshold, return_score=True, model=self.model, tags=self.tags)
+                        except Exception:
+                            err_txt = traceback.format_exc()
                 else:
                     err_txt = traceback.format_exc()
                 if not results and err_txt:
