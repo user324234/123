@@ -34,7 +34,7 @@ except ImportError:
 
 cfg = config.load_config()
 TAG_FORMAT = '{tag}'
-__version__ = '2.2.2'
+__version__ = '2.2.3'
 
 
 def get_files_recursively(folder_path):
@@ -125,12 +125,15 @@ def evaluate_sidecar_batch(folder_path: click.Path, threshold: float, cpu: bool,
         for image_path in image_path_list:
             image_path_progressbar.update(idx/len(image_path_list)*2)  # type: ignore
             idx += 1
-            results = evaluate.eval(image_path, threshold, model=model, tags=tags)
-
-            file = open(image_path + ".txt", "a")
-            for tag in results:
-                file.write(tag + "\n")  # type: ignore
-            file.close()
+            try:
+                results = evaluate.eval(image_path, threshold, model=model, tags=tags)
+                file = open(image_path + ".txt", "a")
+                for tag in results:
+                    file.write(tag + "\n")  # type: ignore
+                file.close()
+            except Exception as e:
+                print(e)
+                print(f'tagging {image_path} failed, skipping')
 
 
 @main.command('evaluate-api-hash')
