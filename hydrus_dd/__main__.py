@@ -26,7 +26,7 @@ try:
 except ImportError:
     hydrus = None
 try:
-    from flask import Flask, flash, json, redirect, request
+    from flask import Flask, flash, request, redirect, json
     from werkzeug.utils import secure_filename
 except ImportError:
     Flask = None  # type: ignore
@@ -247,19 +247,14 @@ class ContentConsumer(threading.Thread):
         self.model = model
         self.tags = tags
         self.threshold = threshold
-        self.queue = Queue()
+        self.queue = Queue()  # type: Queue[Tuple[str, List[Tuple[str, float]]]]
         self.producer_finished = producer_finished
         self.finished = threading.Event()
 
     def run(self):
-        """Method representing the thread’s activity.
-
-        This will run until image producer is finished and all image in queue already processed.
-        """
         while not self.producer_finished.is_set() or not self.hash_content_queue.empty():
             hash_, content = self.hash_content_queue.get()
             tqdm.write(f'estimating tags for {hash_}')
-            results = []
             try:
                 results = evaluate.eval(
                     content, self.threshold, return_score=True, model=self.model, tags=self.tags)

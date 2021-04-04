@@ -31,15 +31,15 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
-        'appdirs',
         'Click>=7.0',
-        'deepdanbooru @ https://github.com/KichangKim/DeepDanbooru/tarball/master',
         'hydrus-api>=2',
         'numpy',
         'Pillow>=8.2.0',
         'scikit-image',
         'six',
+        'appdirs',
         'tqdm',
+        'deepdanbooru @ https://github.com/KichangKim/DeepDanbooru/tarball/master',
     ],
     extras_require={
         'server': ['flask'],
