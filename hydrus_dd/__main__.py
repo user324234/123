@@ -6,12 +6,11 @@ import traceback
 from io import BytesIO
 from pathlib import Path
 from queue import Queue
-from tempfile import NamedTemporaryFile
 from typing import Any, List, Optional, Tuple
 
 import click
-import sh
 from hydrus.utils import yield_chunks
+from PIL import Image
 from tqdm import tqdm
 
 from . import config, evaluate
@@ -217,14 +216,6 @@ class Producer(threading.Thread):
         self.finished.set()
 
 
-def convert_webp(content: BytesIO):
-    """Convert webp to png using **dwebp**."""
-    with NamedTemporaryFile(suffix='.webp') as ifile, NamedTemporaryFile(suffix='.png') as ofile:
-        ifile.write(content.read())
-        sh.dwebp(ifile.name, '-o', ofile.name)
-        return BytesIO(ofile.read())
-
-
 class ContentConsumer(threading.Thread):
     """Predict tags from image content."""
 
@@ -242,10 +233,6 @@ class ContentConsumer(threading.Thread):
     """Tags threshold."""
     finished: threading.Event
     """Flag when the run is finished."""
-    dwebp: Optional[str]
-    """dwebp version if exist and needed.
-
-    if it not exist it will set to :code:`'0'` after first check."""
 
     def __init__(
             self,
@@ -263,7 +250,6 @@ class ContentConsumer(threading.Thread):
         self.queue = Queue()
         self.producer_finished = producer_finished
         self.finished = threading.Event()
-        self.dwebp = None
 
     def run(self):
         """Method representing the thread’s activity.
@@ -277,27 +263,22 @@ class ContentConsumer(threading.Thread):
             try:
                 results = evaluate.eval(
                     content, self.threshold, return_score=True, model=self.model, tags=self.tags)
-            except Exception as err:
-                if err.__class__ == tf.errors.InvalidArgumentError:
-                    err_txt = traceback.format_exc().splitlines()[-1]
-                    # only check dwebp once
-                    if not self.dwebp and sh:
-                        try:
-                            self.dwebp = str(sh.dwebp('-version'))
-                            tqdm.write(f"using dwebp version:{self.dwebp}")
-                        except Exception:
-                            self.dwebp = '0'
-                    substr = "got unknown format starting with 'RIFF"
-                    if substr in err_txt and self.dwebp and self.dwebp != '0':
-                        try:
-                            results = evaluate.eval(
-                                convert_webp(content), self.threshold, return_score=True, model=self.model, tags=self.tags)
-                        except Exception:
-                            err_txt = traceback.format_exc()
-                else:
+            except Exception:
+                err_txt = traceback.format_exc().splitlines()[-1]
+                im_format = None
+                try:
+                    im = Image.open(content)
+                    im.format = im_format
+                    if im_format == "WEBP":
+                        o_im = BytesIO()
+                        im.save(o_im, format='PNG')
+                        results = evaluate.eval(
+                            o_im, self.threshold, return_score=True, model=self.model, tags=self.tags)
+                        tqdm.write(f'convert {hash_},format:{im_format}')
+                except Exception:
                     err_txt = traceback.format_exc()
                 if not results and err_txt:
-                    tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
+                    tqdm.write(f'Error when estimating tags for {hash_},format:{im_format}\n{err_txt}')
             self.queue.put([hash_, results])
             self.hash_content_queue.task_done()
         self.finished.set()
