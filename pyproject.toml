@@ -16,6 +16,7 @@ numpy = "^1.16.2"
 six = "^1.13"
 appdirs = "*"
 tqdm = "*"
+pillow="^8.2.0"
 tensorflow = { version = "^2.1", allow-prereleases = true }
 deepdanbooru = { git = "https://github.com/KichangKim/DeepDanbooru.git", branch = "master" }
 # Optional

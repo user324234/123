@@ -33,8 +33,9 @@ setuptools.setup(
     install_requires=[
         'Click>=7.0',
         'hydrus-api>=2',
-        'scikit-image',
         'numpy',
+        'Pillow>=8.2.0',
+        'scikit-image',
         'six',
         'appdirs',
         'tqdm',
