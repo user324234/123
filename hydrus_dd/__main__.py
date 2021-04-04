@@ -268,7 +268,7 @@ class ContentConsumer(threading.Thread):
                 im_format = None
                 try:
                     im = Image.open(content)
-                    im.format = im_format
+                    im_format = im.format
                     if im_format == "WEBP":
                         o_im = BytesIO()
                         im.save(o_im, format='PNG')
