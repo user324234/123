@@ -10,6 +10,7 @@ from typing import Any, List, Optional, Tuple
 
 import click
 from hydrus.utils import yield_chunks
+from PIL import Image
 from tqdm import tqdm
 
 from . import config, evaluate
@@ -216,6 +217,22 @@ class Producer(threading.Thread):
 
 
 class ContentConsumer(threading.Thread):
+    """Predict tags from image content."""
+
+    queue: 'Queue[Tuple[str, List[Tuple[str, float]]]]'
+    "Main queue for this class."
+    producer_finished: threading.Event
+    "Flag from producer, which produce hash and image content tuple."
+    hash_content_queue: "Queue[Tuple[str, BytesIO]]"
+    ":py:class:`Queue` consist of :py:class:`tuple` of hash and image content."
+    model: Any
+    "Model for deepdanbooru."
+    tags: List[str]
+    "Tags for deepdanbooru."
+    threshold: float
+    """Tags threshold."""
+    finished: threading.Event
+    """Flag when the run is finished."""
 
     def __init__(
             self,
@@ -241,13 +258,22 @@ class ContentConsumer(threading.Thread):
             try:
                 results = evaluate.eval(
                     content, self.threshold, return_score=True, model=self.model, tags=self.tags)
-            except Exception as err:
-                if err.__class__ == tf.errors.InvalidArgumentError:
-                    err_txt = traceback.format_exc().splitlines()[-1]
-                else:
+            except Exception:
+                err_txt = traceback.format_exc().splitlines()[-1]
+                im_format = None
+                try:
+                    im = Image.open(content)
+                    im_format = im.format
+                    if im_format == "WEBP":
+                        o_im = BytesIO()
+                        im.save(o_im, format='PNG')
+                        results = evaluate.eval(
+                            o_im, self.threshold, return_score=True, model=self.model, tags=self.tags)
+                        tqdm.write(f'convert {hash_},format:{im_format}')
+                except Exception:
                     err_txt = traceback.format_exc()
-                tqdm.write(f'Error when estimating tags for {hash_}\n{err_txt}')
-                results = []
+                if not results and err_txt:
+                    tqdm.write(f'Error when estimating tags for {hash_},format:{im_format}\n{err_txt}')
             self.queue.put([hash_, results])
             self.hash_content_queue.task_done()
         self.finished.set()
