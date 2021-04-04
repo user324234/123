@@ -8,6 +8,7 @@ scikit-image
 numpy  
 six  
 appdirs
+Pillow
 
 # Installation
 Download model from https://koto.reisen/model.h5 or through deepdanbooru github releases and put in model/ folder.  
