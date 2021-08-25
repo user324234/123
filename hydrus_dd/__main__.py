@@ -363,8 +363,7 @@ class HashLoader(threading.Thread):
     def run(self):
         cl = hydrus.Client(self.api_key, self.api_url)
         self.client = cl
-        clean_tags = cl.clean_tags(self.search_tags)
-        fileIDs = list(cl.search_files(clean_tags, self.inbox, self.archive))
+        fileIDs = list(cl.search_files(self.search_tags, self.inbox, self.archive))
         for file_ids in yield_chunks(fileIDs, self.chunk_size):
             metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
             self.hashes.extend(list(map(lambda x: x['hash'], metadata)))
@@ -441,8 +440,7 @@ def evaluate_api_search(
                 pass
     else:
         cl = hydrus.Client(api_key, api_url)
-        clean_tags = cl.clean_tags(search_tags)
-        fileIDs = list(cl.search_files(clean_tags, inbox, archive))
+        fileIDs = list(cl.search_files(search_tags, inbox, archive))
         model, tags = load_model_and_tags(model_path, tags_path, compile_)
         hashes = []
         for file_ids in yield_chunks(fileIDs, chunk_size):
