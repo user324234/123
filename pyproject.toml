@@ -23,5 +23,9 @@ deepdanbooru = { git = "https://github.com/KichangKim/DeepDanbooru.git", branch 
 flask = { version = "*", optional = true }
 hydrus-api = { version = "^2", optional = true }
 
+[tool.poetry.extras]
+server = ["flask"]
+api = ["hydrus-api"]
+
 [tool.poetry.scripts]
 hydrus-dd = 'hydrus_dd.__main__:main'
