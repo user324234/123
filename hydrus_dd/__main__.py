@@ -9,7 +9,7 @@ from queue import Queue
 from typing import Any, List, Optional, Tuple
 
 import click
-from hydrus.utils import yield_chunks
+from hydrus_api.utils import yield_chunks
 from PIL import Image
 from tqdm import tqdm
 
@@ -22,9 +22,9 @@ except ImportError:
     tf = None
 
 try:
-    import hydrus
+    import hydrus_api
 except ImportError:
-    hydrus = None
+    hydrus_api = None
 try:
     from flask import Flask, flash, request, redirect, json
     from werkzeug.utils import secure_filename
@@ -33,7 +33,7 @@ except ImportError:
 
 cfg = config.load_config()
 TAG_FORMAT = '{tag}'
-__version__ = '2.2.4'
+__version__ = '3.0.0'
 
 
 def get_files_recursively(folder_path):
@@ -139,7 +139,8 @@ def evaluate_sidecar_batch(folder_path: click.Path, threshold: float, cpu: bool,
 @click.option('--hash', '-h', 'hash_', multiple=True)
 @click.option('--threshold', type=float, default=cfg['general']['threshold'], help='Score threshold for result.', show_default=True)
 @click.option('--api_key', default=cfg['general']['api_key'])
-@click.option('--service', default=cfg['general']['service'], show_default=True)
+@click.option('--tag_service', default=cfg['general']['tag_service'], show_default=True)
+@click.option('--file_service', default=cfg['general']['file_service'], show_default=True)
 @click.option(
     '--input', '-i', 'input_', nargs=1,
     type=click.Path(exists=True, resolve_path=True, file_okay=True, dir_okay=False),
@@ -159,10 +160,10 @@ def evaluate_sidecar_batch(folder_path: click.Path, threshold: float, cpu: bool,
     '--compile/--no-compile', 'compile_', default=None,
     help='Compile/don\'t compile when loading model.')
 def evaluate_api_hash(
-        threshold: float, service: str, api_key: str,
+        threshold: float, tag_service: str, file_service: str, api_key: str,
         hash_: List[str], api_url: str, input_: click.Path, cpu: bool,
         model_path: click.Path, tags_path: click.Path, tag_format: str, compile_: Optional[bool]):
-    if hydrus is None:
+    if hydrus_api is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
         return
     if cpu:
@@ -174,14 +175,14 @@ def evaluate_api_hash(
     with click.progressbar(hash_) as hash_progressbar:
         for hash_item in hash_progressbar:
             try:
-                cl = hydrus.Client(api_key, api_url)
+                cl = hydrus_api.Client(api_key, api_url)
                 print(f' tagging {hash_item}')
                 image_path = BytesIO(cl.get_file(hash_=hash_item).content)
                 hash_arg = [hash_item]
                 if tag_format == TAG_FORMAT:
                     results = evaluate.eval(
                         image_path, threshold, model=model, tags=tags)
-                    cl.add_tags(hash_arg, {service: results})
+                    cl.add_tags(hash_arg, {tag_service: results})
                 else:
                     results = evaluate.eval(
                         image_path, threshold, return_score=True,  model=model, tags=tags)
@@ -189,7 +190,7 @@ def evaluate_api_hash(
                         service_tags = list(map(lambda x: tag_format.format(
                             tag=x[0], score=x[1], score10int=int(x[1]*10)  # type: ignore
                         ), results))
-                        cl.add_tags(hash_arg, {service: service_tags})
+                        cl.add_tags(hash_arg, {tag_service: service_tags})
             except Exception as e:
                 print(e)
                 print(f'tagging {hash_item} failed, skipping')
@@ -286,7 +287,7 @@ class Consumer(threading.Thread):
             queue: "Queue[Tuple[str, List[Tuple[str, float]]]]",
             client: Any,
             tag_format: str,
-            service: str,
+            tag_service: str,
             pbar: Any,
             content_consumer_finished: threading.Event
     ):
@@ -294,14 +295,14 @@ class Consumer(threading.Thread):
         self.queue = queue
         self.client = client
         self.tag_format = tag_format
-        self.service = service
+        self.tag_service = tag_service
         self.pbar = pbar
         self.content_consumer_finished = content_consumer_finished
 
     def run(self):
         cl = self.client
         tag_format = self.tag_format
-        service = self.service
+        tag_service = self.tag_service
         while not self.content_consumer_finished.is_set() or not self.queue.empty():
             try:
                 hash_, results = self.queue.get()
@@ -312,7 +313,7 @@ class Consumer(threading.Thread):
                         tag=x[0], score=x[1], score10int=int(x[1]*10)),  # type: ignore
                     results))
                 if service_tags:
-                    cl.add_tags(hash_arg, {service: service_tags})
+                    cl.add_tags(hash_arg, {tag_service: service_tags})
             except Exception:
                 err_txt = traceback.format_exc()
                 tqdm.write(f'Error when tagging {hash_}\n{err_txt}')
@@ -346,8 +347,9 @@ class HashLoader(threading.Thread):
             api_key: str,
             api_url: str,
             search_tags: List[str],
-            inbox: bool,
-            archive: bool,
+            file_service: str,
+            sort_type: int,
+            sort_asc: bool,
             chunk_size: int
     ):
         threading.Thread.__init__(self)
@@ -355,27 +357,29 @@ class HashLoader(threading.Thread):
         self.api_key = api_key
         self.api_url = api_url
         self.search_tags = search_tags
-        self.inbox = inbox
-        self.archive = archive
+        self.file_service = file_service
+        self.sort_type = sort_type
+        self.sort_asc = sort_asc
         self.chunk_size = chunk_size
         self.hashes = []  # type: List[str]
 
     def run(self):
-        cl = hydrus.Client(self.api_key, self.api_url)
+        cl = hydrus_api.Client(self.api_key, self.api_url)
         self.client = cl
-        fileIDs = list(cl.search_files(self.search_tags, self.inbox, self.archive))
+        fileIDs = list(cl.search_files(tags = self.search_tags, file_service_name = self.file_service, file_sort_type = self.sort_type, file_sort_asc = self.sort_asc))
         for file_ids in yield_chunks(fileIDs, self.chunk_size):
-            metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+            metadata = cl.get_file_metadata(file_ids=file_ids, only_return_identifiers=True)
             self.hashes.extend(list(map(lambda x: x['hash'], metadata)))
 
 
 @main.command('evaluate-api-search')
 @click.argument('search_tags', nargs=-1)
-@click.option('--archive', default=cfg['general']['archive'], is_flag=True)
-@click.option('--inbox', default=cfg['general']['inbox'], is_flag=True)
 @click.option('--threshold',  type=float, default=cfg['general']['threshold'], help='Score threshold for result.', show_default=True)
 @click.option('--api_key', default=cfg['general']['api_key'])
-@click.option('--service', default=cfg['general']['service'], show_default=True)
+@click.option('--tag_service', default=cfg['general']['tag_service'], show_default=True)
+@click.option('--file_service', default=cfg['general']['file_service'], show_default=True)
+@click.option('--sort_type', default=cfg['general']['sort_type'], show_default=True)
+@click.option('--sort_asc/--sort_desc', default=cfg['general']['sort_asc'], is_flag=True, show_default=True)
 @click.option('--api_url', default=cfg['general']['api_url'], show_default=True)
 @click.option('--chunk_size', type=int, default=cfg['general']['chunk_size'], show_default=True)
 @click.option('--cpu', default=cfg['general']['cpu'], is_flag=True, help="Use CPU")
@@ -395,18 +399,18 @@ class HashLoader(threading.Thread):
     '--parallel/--no-parallel', 'parallel', default=True,
     help='Run parallel or not.')
 def evaluate_api_search(
-        archive: bool, inbox: bool, threshold: float, api_key: str, service: str, api_url: str,
+        threshold: float, api_key: str, tag_service: str, file_service: str, sort_type: int, sort_asc: bool, api_url: str,
         search_tags: List[str], chunk_size: int, cpu: bool,
         model_path: click.Path, tags_path: click.Path, tag_format: str, compile_: Optional[bool],
         parallel: bool = True
 ):
-    if hydrus is None:
+    if hydrus_api is None:
         print("Hydrus API not found.\nPlease install hydrus-api python module.")
         return()
     if cpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     if parallel:
-        hash_loader = HashLoader(api_key, api_url, search_tags, inbox, archive, chunk_size)
+        hash_loader = HashLoader(api_key, api_url, search_tags, file_service, sort_type, sort_asc, chunk_size)
         model_loader = ModelLoader(model_path, compile_)
         hash_loader.start()
         model_loader.start()
@@ -429,7 +433,7 @@ def evaluate_api_search(
                     producer.queue, model, tags, threshold, producer.finished)
                 consumer = Consumer(
                     content_consumer.queue,
-                    cl, tag_format, service, pbar,
+                    cl, tag_format, tag_service, pbar,
                     content_consumer.finished)
                 content_consumer.start()
                 consumer.start()
@@ -439,12 +443,12 @@ def evaluate_api_search(
             except KeyboardInterrupt:
                 pass
     else:
-        cl = hydrus.Client(api_key, api_url)
-        fileIDs = list(cl.search_files(search_tags, inbox, archive))
+        cl = hydrus_api.Client(api_key, api_url)
+        fileIDs = list(cl.search_files(tags = search_tags, file_service_name = file_service, file_sort_type = sort_type, file_sort_asc = sort_asc))
         model, tags = load_model_and_tags(model_path, tags_path, compile_)
         hashes = []
         for file_ids in yield_chunks(fileIDs, chunk_size):
-            metadata = cl.file_metadata(file_ids=file_ids, only_identifiers=True)
+            metadata = cl.get_file_metadata(file_ids=file_ids, only_return_identifiers=True)
             for n, metadata in enumerate(metadata):
                 hashes.append(metadata['hash'])
         if not hashes:
@@ -465,7 +469,7 @@ def evaluate_api_search(
                             tag=x[0], score=x[1], score10int=int(x[1]*10)),  # type: ignore
                         results))
                 if service_tags:
-                    cl.add_tags(hash_arg, {service: service_tags})
+                    cl.add_tags(hash_arg, {tag_service: service_tags})
             except Exception as e:
                 print(e)
                 print(f'{hash_} does not appear to be an image, skipping')

@@ -29,10 +29,10 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
     install_requires=[
         'Click>=7.0',
-        'hydrus-api>=2',
+        'hydrus-api>=3.22.4',
         'numpy',
         'Pillow>=8.2.0',
         'scikit-image',
