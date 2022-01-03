@@ -256,6 +256,7 @@ class ContentConsumer(threading.Thread):
         while not self.producer_finished.is_set() or not self.hash_content_queue.empty():
             hash_, content = self.hash_content_queue.get()
             tqdm.write(f'estimating tags for {hash_}')
+            results = None
             try:
                 results = evaluate.eval(
                     content, self.threshold, return_score=True, model=self.model, tags=self.tags)
