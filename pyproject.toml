@@ -9,10 +9,10 @@ repository = "https://gitgud.io/koto/hydrus-dd"
 homepage = "https://gitgud.io/koto/hydrus-dd"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9,<3.11"
 click = "^7.0"
 scikit-image = "*"
-numpy = "^1.16.2"
+oldest-supported-numpy = "*"
 six = "^1.13"
 appdirs = "*"
 tqdm = "*"
