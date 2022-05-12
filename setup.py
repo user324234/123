@@ -43,7 +43,7 @@ setuptools.setup(
     ],
     extras_require={
         'server': ['flask'],
-        'tensorflow': ['tensorflow>=2'],
+        'tensorflow': ['tensorflow>=2','tensorflow-io>=0.22.0'],
         'tests': ['pytest', 'mypy', 'flake8', 'tox'],
     },
     entry_points={

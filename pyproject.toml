@@ -18,6 +18,7 @@ appdirs = "*"
 tqdm = "*"
 pillow="^8.2.0"
 tensorflow = { version = "^2.1", allow-prereleases = true }
+tensorflow_io = ">=0.22.0"
 deepdanbooru = { git = "https://github.com/KichangKim/DeepDanbooru.git", branch = "master" }
 # Optional
 flask = { version = "*", optional = true }
